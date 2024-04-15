@@ -78,6 +78,20 @@ wget -N https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/ins
 [Docker部署教程](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/docker)
 
 ### 手动安装
+手动安装
+下载并使用
+在此处，根据自身系统选择合适的版本：Release
+解压压缩包，之后运行：./XrayR --config config.yml
+编译并使用
+大于 go 1.19
+依次运行
+
+git clone https://github.com/XrayR-project/XrayR
+cd XrayR/main
+go mod tidy
+go build -o XrayR -ldflags "-s -w"
+./XrayR --config config.yml
+配置文件详见：配置文件说明
 
 [手动安装教程](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/manual)
 

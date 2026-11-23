@@ -1,5 +1,9 @@
 # XrayR
 
+当前维护版本：**1.0.0**。支持 SSPanel-Metron 对接、VLESS WS/WSS 双入口、AnyTLS 和 Hysteria2。
+
+[下载程序](https://github.com/Laosixok/XrayR/releases/tag/1.0.0) · [SSPanel-Metron 配置说明](docs/SSPanel-Metron.md) · [维护与来源声明](NOTICE.md)
+
 [![](https://img.shields.io/badge/TgChat-@XrayR讨论-blue.svg)](https://t.me/XrayR_project)
 [![](https://img.shields.io/badge/Channel-@XrayR通知-blue.svg)](https://t.me/XrayR_channel)
 ![](https://img.shields.io/github/stars/XrayR-project/XrayR)
@@ -22,7 +26,7 @@ A Xray backend framework that can easily support many panels.
 
 ## 免责声明
 
-本项目只是本人个人学习开发并维护，本人不保证任何可用性，也不对使用本软件造成的任何后果负责。
+本仓库是个人维护的 XrayR 分支，当前版本为 1.0.0，用于学习与自用。项目继承原 XrayR，并固定复用 XrayRP 的 AnyTLS、Hysteria2 运行时；不代表原项目或相关依赖的官方发行。软件按原有许可证及依赖许可证提供，不承诺可用性或适用性。来源及许可证说明见 [NOTICE.md](NOTICE.md) 与 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 特点
 

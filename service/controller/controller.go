@@ -153,7 +153,7 @@ func (c *Controller) Start() error {
 	)
 
 	// Check cert service in need
-	if c.nodeInfo.EnableTLS && c.config.EnableREALITY == false {
+	if (c.nodeInfo.EnableTLS || c.config.WSAdditionalTLSPort != 0) && c.config.EnableREALITY == false {
 		c.tasks = append(c.tasks, periodicTask{
 			tag: "cert monitor",
 			Periodic: &task.Periodic{
@@ -222,6 +222,10 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	// If nodeInfo changed
 	if nodeInfoChanged {
 		if !reflect.DeepEqual(c.nodeInfo, newNodeInfo) {
+			if err := c.validateWSAdditionalTLS(newNodeInfo); err != nil {
+				c.logger.Print(err)
+				return nil
+			}
 			// Remove old tag
 			oldTag := c.Tag
 			err := c.removeOldTag(oldTag)
@@ -313,6 +317,13 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 }
 
 func (c *Controller) removeOldTag(oldTag string) (err error) {
+	if c.config.WSAdditionalTLSPort != 0 && oldTag == c.Tag {
+		alias := c.wsTLSTag(oldTag)
+		if err = c.removeInbound(alias); err != nil {
+			return err
+		}
+		c.dispatcher.RemoveInboundAlias(alias)
+	}
 	err = c.removeInbound(oldTag)
 	if err != nil {
 		return err
@@ -325,6 +336,9 @@ func (c *Controller) removeOldTag(oldTag string) (err error) {
 }
 
 func (c *Controller) addNewTag(newNodeInfo *api.NodeInfo) (err error) {
+	if err = c.validateWSAdditionalTLS(newNodeInfo); err != nil {
+		return err
+	}
 	if newNodeInfo.NodeType != "Shadowsocks-Plugin" {
 		inboundConfig, err := InboundBuilder(c.config, newNodeInfo, c.Tag)
 		if err != nil {
@@ -343,6 +357,12 @@ func (c *Controller) addNewTag(newNodeInfo *api.NodeInfo) (err error) {
 		err = c.addOutbound(outBoundConfig)
 		if err != nil {
 
+			return err
+		}
+
+		if err = c.addWSAdditionalTLS(newNodeInfo); err != nil {
+			_ = c.removeInbound(c.Tag)
+			_ = c.removeOutbound(c.Tag)
 			return err
 		}
 
@@ -624,7 +644,7 @@ func (c *Controller) buildNodeTag() string {
 
 // Check Cert
 func (c *Controller) certMonitor() error {
-	if c.nodeInfo.EnableTLS && c.config.EnableREALITY == false {
+	if (c.nodeInfo.EnableTLS || c.config.WSAdditionalTLSPort != 0) && c.config.EnableREALITY == false {
 		switch c.config.CertConfig.CertMode {
 		case "dns", "http", "tls":
 			lego, err := mylego.New(c.config.CertConfig)

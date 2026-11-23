@@ -38,14 +38,17 @@ type CustomConfig struct {
 
 // UserResponse is the response of user
 type UserResponse struct {
-	ID          int     `json:"id"`
-	Passwd      string  `json:"passwd"`
-	Port        uint32  `json:"port"`
-	Method      string  `json:"method"`
-	SpeedLimit  float64 `json:"node_speedlimit"`
-	DeviceLimit int     `json:"node_iplimit"`
-	UUID        string  `json:"uuid"`
-	AliveIP     int     `json:"alive_ip"`
+	hasModernDeviceLimit bool
+	ID                   int     `json:"id"`
+	Passwd               string  `json:"passwd"`
+	Port                 uint32  `json:"port"`
+	Method               string  `json:"method"`
+	SpeedLimit           float64 `json:"node_speedlimit"`
+	DeviceLimit          int     `json:"node_iplimit"`
+	LegacyDeviceLimit    int     `json:"node_connector"`
+	MultiUser            int     `json:"is_multi_user"`
+	UUID                 string  `json:"uuid"`
+	AliveIP              int     `json:"alive_ip"`
 }
 
 // Response is the common response
@@ -97,4 +100,20 @@ type REALITYConfig struct {
 	MaxClientVer     string   `json:"max_client_ver,omitempty"`
 	MaxTimeDiff      uint64   `json:"max_time_diff,omitempty"`
 	ShortIds         []string `json:"short_ids,omitempty"`
+}
+
+// Preserve an explicit modern zero (unlimited) when both generations of fields exist.
+func (u *UserResponse) UnmarshalJSON(data []byte) error {
+	type plain UserResponse
+	var value plain
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*u = UserResponse(value)
+	_, u.hasModernDeviceLimit = fields["node_iplimit"]
+	return nil
 }

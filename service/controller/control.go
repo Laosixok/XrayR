@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/XrayR-project/XrayR/app/mydispatcher"
+	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/core"
@@ -26,11 +28,17 @@ func (c *Controller) removeInbound(tag string) error {
 // statsOutboundWrapper wraps outbound.Handler to ensure user downlink traffic is counted.
 type statsOutboundWrapper struct {
 	outbound.Handler
-	pm policy.Manager
-	sm stats.Manager
+	pm         policy.Manager
+	sm         stats.Manager
+	dispatcher *mydispatcher.DefaultDispatcher
 }
 
 func (w *statsOutboundWrapper) Dispatch(ctx context.Context, link *transport.Link) {
+	if w.dispatcher != nil && !w.dispatcher.PrepareOutboundLink(ctx, link) {
+		_ = common.Close(link.Writer)
+		common.Interrupt(link.Reader)
+		return
+	}
 	// Disable kernel splice to avoid Vision/REALITY bypassing userland stats path
 	if sess := session.InboundFromContext(ctx); sess != nil {
 		sess.CanSpliceCopy = 3
@@ -68,14 +76,14 @@ func (c *Controller) addOutbound(config *core.OutboundHandlerConfig) error {
 		return fmt.Errorf("not an InboundHandler: %s", err)
 	}
 	// Wrap outbound handler to ensure downlink stats are always counted (e.g., REALITY/VLESS cases)
-	handler = &statsOutboundWrapper{Handler: handler, pm: c.pm, sm: c.stm}
+	handler = &statsOutboundWrapper{Handler: handler, pm: c.pm, sm: c.stm, dispatcher: c.dispatcher}
 	if err := c.obm.AddHandler(context.Background(), handler); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *Controller) addUsers(users []*protocol.User, tag string) error {
+func (c *Controller) addUsersToInbound(users []*protocol.User, tag string) error {
 	handler, err := c.ibm.GetHandler(context.Background(), tag)
 	if err != nil {
 		return fmt.Errorf("no such inbound tag: %s", err)
@@ -101,17 +109,17 @@ func (c *Controller) addUsers(users []*protocol.User, tag string) error {
 		// Pre-register per-user traffic counters so core can increment them (downlink/uplink)
 		uName := "user>>>" + mUser.Email + ">>>traffic>>>uplink"
 		dName := "user>>>" + mUser.Email + ">>>traffic>>>downlink"
-		if _, _ = stats.GetOrRegisterCounter(c.stm, uName); true {
+		if _, _ = c.stm.GetOrRegisterCounter(uName); true {
 			// no-op
 		}
-		if _, _ = stats.GetOrRegisterCounter(c.stm, dName); true {
+		if _, _ = c.stm.GetOrRegisterCounter(dName); true {
 			// no-op
 		}
 	}
 	return nil
 }
 
-func (c *Controller) removeUsers(users []string, tag string) error {
+func (c *Controller) removeUsersFromInbound(users []string, tag string) error {
 	handler, err := c.ibm.GetHandler(context.Background(), tag)
 	if err != nil {
 		return fmt.Errorf("no such inbound tag: %s", err)
@@ -187,4 +195,22 @@ func (c *Controller) UpdateRule(tag string, newRuleList []api.DetectRule) error 
 
 func (c *Controller) GetDetectResult(tag string) (*[]api.DetectResult, error) {
 	return c.dispatcher.RuleManager.GetDetectResult(tag)
+}
+
+func (c *Controller) addUsers(users []*protocol.User, tag string) error {
+	for _, inboundTag := range c.userInboundTags(tag) {
+		if err := c.addUsersToInbound(users, inboundTag); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (c *Controller) removeUsers(users []string, tag string) error {
+	var result error
+	for _, inboundTag := range c.userInboundTags(tag) {
+		if err := c.removeUsersFromInbound(users, inboundTag); err != nil {
+			result = err
+		}
+	}
+	return result
 }

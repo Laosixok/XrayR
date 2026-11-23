@@ -1,0 +1,24 @@
+Log:
+  Level: warning
+Nodes:
+  - PanelType: SSpanel
+    ApiConfig:
+      ApiHost: https://panel.example.com
+      ApiKey: REPLACE_WITH_MU_KEY
+      NodeID: 15 # Replace with the SSPanel-Metron VLESS node ID (sort=15).
+      NodeType: Vless
+      EnableVless: true
+      VlessFlow: "" # WebSocket must not use xtls-rprx-vision.
+      DisableCustomConfig: true
+      Timeout: 30
+    ControllerConfig:
+      ListenIP: 0.0.0.0
+      SendIP: 0.0.0.0
+      UpdatePeriodic: 60
+      WSAdditionalTLSPort: 443 # 0 or omitted: keep the original single listener.
+      EnableREALITY: false
+      CertConfig:
+        CertMode: file
+        CertDomain: node.example.com
+        CertFile: /etc/XrayR/cert/fullchain.pem
+        KeyFile: /etc/XrayR/cert/privkey.pem

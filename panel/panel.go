@@ -27,6 +27,7 @@ import (
 	_ "github.com/XrayR-project/XrayR/cmd/distro/all"
 	"github.com/XrayR-project/XrayR/service"
 	"github.com/XrayR-project/XrayR/service/controller"
+	"github.com/XrayR-project/XrayR/service/specialprotocol"
 )
 
 // Panel Structure
@@ -201,7 +202,16 @@ func (p *Panel) Start() {
 				log.Panicf("Read Controller Config Failed")
 			}
 		}
-		controllerService = controller.New(server, apiClient, controllerConfig, nodeConfig.PanelType)
+		switch apiClient.Describe().NodeType {
+		case "AnyTLS", "Hysteria2":
+			var err error
+			controllerService, err = specialprotocol.New(apiClient, controllerConfig, nodeConfig.PanelType)
+			if err != nil {
+				log.Panicf("Specialized protocol config failed: %s", err)
+			}
+		default:
+			controllerService = controller.New(server, apiClient, controllerConfig, nodeConfig.PanelType)
+		}
 		p.Service = append(p.Service, controllerService)
 
 	}

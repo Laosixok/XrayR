@@ -37,6 +37,9 @@ type NodeStatus struct {
 }
 
 type NodeInfo struct {
+	SNI                 string
+	AnyTLSConfig        *AnyTLSConfig
+	Hysteria2Config     *Hysteria2Config
 	AcceptProxyProtocol bool
 	Authority           string
 	NodeType            string // Must be V2ray, Trojan, and Shadowsocks
@@ -130,4 +133,14 @@ type REALITYConfig struct {
 	MaxClientVer     string
 	MaxTimeDiff      uint64
 	ShortIds         []string
+}
+
+// Specialized protocol settings retain the panel's subscription semantics.
+type AnyTLSConfig struct{ PaddingScheme []string }
+type Hysteria2Config struct {
+	Obfs                  string
+	ObfsPassword          string
+	UpMbps                int
+	DownMbps              int
+	IgnoreClientBandwidth bool
 }

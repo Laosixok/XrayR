@@ -1,0 +1,35 @@
+Log:
+  Level: warning
+Nodes:
+  - PanelType: SSpanel
+    ApiConfig:
+      ApiHost: https://panel.example.com
+      ApiKey: REPLACE_WITH_MU_KEY
+      NodeID: 18 # Replace with the actual sort=18 node ID.
+      NodeType: AnyTLS
+      Timeout: 30
+    ControllerConfig:
+      ListenIP: 0.0.0.0
+      SendIP: 0.0.0.0
+      UpdatePeriodic: 60
+      CertConfig:
+        CertMode: file
+        CertDomain: anytls.example.com
+        CertFile: /etc/XrayR/cert/anytls-fullchain.pem
+        KeyFile: /etc/XrayR/cert/anytls-key.pem
+  - PanelType: SSpanel
+    ApiConfig:
+      ApiHost: https://panel.example.com
+      ApiKey: REPLACE_WITH_MU_KEY
+      NodeID: 17 # Replace with the actual sort=17 node ID.
+      NodeType: Hysteria2
+      Timeout: 30
+    ControllerConfig:
+      ListenIP: 0.0.0.0
+      SendIP: 0.0.0.0
+      UpdatePeriodic: 60
+      CertConfig:
+        CertMode: file
+        CertDomain: hy2.example.com
+        CertFile: /etc/XrayR/cert/hy2-fullchain.pem
+        KeyFile: /etc/XrayR/cert/hy2-key.pem

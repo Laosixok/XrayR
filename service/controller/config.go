@@ -3,9 +3,13 @@ package controller
 import (
 	"github.com/XrayR-project/XrayR/common/limiter"
 	"github.com/XrayR-project/XrayR/common/mylego"
+	"github.com/xtls/xray-core/infra/conf"
 )
 
 type Config struct {
+	OutboundFinalRules []*conf.FreedomFinalRuleConfig `mapstructure:"OutboundFinalRules"`
+	// Optional second VLESS WebSocket listener, with TLS and shared users/accounting.
+	WSAdditionalTLSPort       uint16                           `mapstructure:"WSAdditionalTLSPort"`
 	ListenIP                  string                           `mapstructure:"ListenIP"`
 	SendIP                    string                           `mapstructure:"SendIP"`
 	UpdatePeriodic            int                              `mapstructure:"UpdatePeriodic"`

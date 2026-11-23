@@ -96,14 +96,15 @@ func (r *cachedReader) Interrupt() {
 // and adds XrayR-specific features like rate limiting and rule management.
 type DefaultDispatcher struct {
 	*dispatcher.DefaultDispatcher
-	ohm         outbound.Manager
-	router      routing.Router
-	policy      policy.Manager
-	stats       stats.Manager
-	dns         dns.Client
-	fdns        dns.FakeDNSEngine
-	Limiter     *limiter.Limiter
-	RuleManager *rule.Manager
+	ohm            outbound.Manager
+	router         routing.Router
+	policy         policy.Manager
+	stats          stats.Manager
+	dns            dns.Client
+	fdns           dns.FakeDNSEngine
+	Limiter        *limiter.Limiter
+	RuleManager    *rule.Manager
+	inboundAliases sync.Map
 }
 
 func init() {
@@ -204,7 +205,7 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 		p := d.policy.ForLevel(user.Level)
 		if p.Stats.UserUplink {
 			name := "user>>>" + user.Email + ">>>traffic>>>uplink"
-			if c, _ := stats.GetOrRegisterCounter(d.stats, name); c != nil {
+			if c, _ := d.stats.GetOrRegisterCounter(name); c != nil {
 				inboundLink.Writer = &SizeStatWriter{
 					Counter: c,
 					Writer:  inboundLink.Writer,
@@ -213,7 +214,7 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 		}
 		if p.Stats.UserDownlink {
 			name := "user>>>" + user.Email + ">>>traffic>>>downlink"
-			if c, _ := stats.GetOrRegisterCounter(d.stats, name); c != nil {
+			if c, _ := d.stats.GetOrRegisterCounter(name); c != nil {
 				outboundLink.Writer = &SizeStatWriter{
 					Counter: c,
 					Writer:  outboundLink.Writer,
@@ -227,10 +228,8 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 
 func (d *DefaultDispatcher) shouldOverride(ctx context.Context, result SniffResult, request session.SniffingRequest, destination net.Destination) bool {
 	domain := result.Domain()
-	for _, d := range request.ExcludeForDomain {
-		if strings.ToLower(domain) == d {
-			return false
-		}
+	if request.ExcludeForDomain != nil && request.ExcludeForDomain.MatchAny(strings.ToLower(domain)) {
+		return false
 	}
 	protocolString := result.Protocol()
 	if resComp, ok := result.(SnifferResultComposite); ok {
@@ -484,4 +483,36 @@ func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.
 	}
 
 	handler.Dispatch(ctx, link)
+}
+
+// RegisterInboundAlias shares the panel node's limits and audit rules.
+func (d *DefaultDispatcher) RegisterInboundAlias(alias, tag string) {
+	d.inboundAliases.Store(alias, tag)
+}
+func (d *DefaultDispatcher) RemoveInboundAlias(alias string) { d.inboundAliases.Delete(alias) }
+
+// PrepareOutboundLink applies panel controls on the official core dispatch path.
+// Newer VLESS requires the concrete official dispatcher, so registering a separate
+// custom feature alone does not put its Dispatch method on the traffic path.
+func (d *DefaultDispatcher) PrepareOutboundLink(ctx context.Context, link *transport.Link) bool {
+	inbound := session.InboundFromContext(ctx)
+	if inbound == nil || inbound.User == nil || inbound.User.Email == "" {
+		return true
+	}
+	if tag, ok := d.inboundAliases.Load(inbound.Tag); ok {
+		inbound.Tag = tag.(string)
+	}
+	bucket, limited, reject := d.Limiter.GetUserBucket(inbound.Tag, inbound.User.Email, inbound.Source.Address.IP().String())
+	if reject {
+		return false
+	}
+	outbounds := session.OutboundsFromContext(ctx)
+	if len(outbounds) > 0 && d.RuleManager.Detect(inbound.Tag, outbounds[len(outbounds)-1].Target.String(), inbound.User.Email) {
+		return false
+	}
+	if limited {
+		link.Reader = d.Limiter.RateReader(ctx, link.Reader, bucket)
+		link.Writer = d.Limiter.RateWriter(link.Writer, bucket)
+	}
+	return true
 }

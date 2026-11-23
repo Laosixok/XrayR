@@ -16,6 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/google/uuid"
 
 	"github.com/XrayR-project/XrayR/api"
 )
@@ -47,6 +48,17 @@ type APIClient struct {
 
 // New create api instance
 func New(apiConfig *api.Config) *APIClient {
+	// Canonical names are also used by the specialized runtime selector.
+	switch strings.ToLower(apiConfig.NodeType) {
+	case "anytls":
+		apiCopy := *apiConfig
+		apiConfig = &apiCopy
+		apiConfig.NodeType = "AnyTLS"
+	case "hysteria2", "hy2":
+		apiCopy := *apiConfig
+		apiConfig = &apiCopy
+		apiConfig.NodeType = "Hysteria2"
+	}
 	client := resty.New()
 
 	client.SetRetryCount(3)
@@ -167,6 +179,9 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 		SetHeader("If-None-Match", c.eTags["node"]).
 		ForceContentType("application/json").
 		Get(path)
+	if err != nil {
+		return nil, err
+	}
 	// Etag identifier for a specific version of a resource. StatusCode = 304 means no changed
 	if res.StatusCode() == 304 {
 		return nil, errors.New(api.NodeNotModified)
@@ -187,6 +202,10 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 		return nil, fmt.Errorf("unmarshal %s failed: %s", reflect.TypeOf(nodeInfoResponse), err)
 	}
 
+	if c.NodeType == "AnyTLS" || c.NodeType == "Hysteria2" {
+		return c.parseMetronProtocol(nodeInfoResponse)
+	}
+
 	// determine ssPanel version, if disable custom config or version < 2021.11, then use old api
 	c.version = nodeInfoResponse.Version
 	var isExpired bool
@@ -200,7 +219,7 @@ func (c *APIClient) GetNodeInfo() (nodeInfo *api.NodeInfo, err error) {
 		}
 
 		switch c.NodeType {
-		case "V2ray":
+		case "V2ray", "Vmess", "Vless":
 			nodeInfo, err = c.ParseV2rayNodeResponse(nodeInfoResponse)
 		case "Trojan":
 			nodeInfo, err = c.ParseTrojanNodeResponse(nodeInfoResponse)
@@ -236,6 +255,9 @@ func (c *APIClient) GetUserList() (UserList *[]api.UserInfo, err error) {
 		SetResult(&Response{}).
 		ForceContentType("application/json").
 		Get(path)
+	if err != nil {
+		return nil, err
+	}
 	// Etag identifier for a specific version of a resource. StatusCode = 304 means no changed
 	if res.StatusCode() == 304 {
 		return nil, errors.New(api.UserNotModified)
@@ -353,6 +375,9 @@ func (c *APIClient) GetNodeRule() (*[]api.DetectRule, error) {
 		ForceContentType("application/json").
 		Get(path)
 
+	if err != nil {
+		return nil, err
+	}
 	// Etag identifier for a specific version of a resource. StatusCode = 304 means no changed
 	if res.StatusCode() == 304 {
 		return nil, errors.New(api.RuleNotModified)
@@ -418,10 +443,20 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	}
 	// nodeInfo.RawServerString = strings.ToLower(nodeInfo.RawServerString)
 	serverConf := strings.Split(nodeInfoResponse.RawServerString, ";")
+	if len(serverConf) < 3 {
+		return nil, fmt.Errorf("invalid V2ray server: expected host;port;alterId")
+	}
+	for len(serverConf) < 6 {
+		serverConf = append(serverConf, "")
+	}
+	transportProtocol = "tcp"
 
 	parsedPort, err := strconv.ParseInt(serverConf[1], 10, 32)
 	if err != nil {
 		return nil, err
+	}
+	if parsedPort < 1 || parsedPort > 65535 {
+		return nil, fmt.Errorf("invalid V2ray port: %d", parsedPort)
 	}
 	port := uint32(parsedPort)
 
@@ -445,7 +480,10 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 	extraServerConf := strings.Split(serverConf[5], "|")
 	serviceName = ""
 	for _, item := range extraServerConf {
-		conf := strings.Split(item, "=")
+		conf := strings.SplitN(item, "=", 2)
+		if len(conf) != 2 {
+			continue
+		}
 		key := conf[0]
 		if key == "" {
 			continue
@@ -469,6 +507,9 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 		speedLimit = uint64((nodeInfoResponse.SpeedLimit * 1000000) / 8)
 	}
 
+	if (transportProtocol == "ws" || transportProtocol == "websocket") && path == "" {
+		path = "/"
+	}
 	if HeaderType != "" {
 		headers := map[string]string{"type": HeaderType}
 		header, err = json.Marshal(headers)
@@ -489,7 +530,7 @@ func (c *APIClient) ParseV2rayNodeResponse(nodeInfoResponse *NodeInfoResponse) (
 		EnableTLS:         enableTLS,
 		Path:              path,
 		Host:              host,
-		EnableVless:       c.EnableVless,
+		EnableVless:       c.EnableVless || c.NodeType == "Vless" || nodeInfoResponse.Sort == 15,
 		VlessFlow:         c.VlessFlow,
 		ServiceName:       serviceName,
 		Header:            header,
@@ -522,8 +563,15 @@ func (c *APIClient) ParseSSNodeResponse(nodeInfoResponse *NodeInfoResponse) (*ap
 	}
 
 	// init server port
-	if len(*userListResponse) != 0 {
-		port = (*userListResponse)[0].Port
+	for _, user := range *userListResponse {
+		if user.MultiUser != 0 {
+			port = user.Port
+			method = user.Method
+			break
+		}
+	}
+	if port == 0 || method == "" {
+		return nil, fmt.Errorf("no legacy Shadowsocks carrier account found")
 	}
 
 	if c.SpeedLimit > 0 {
@@ -697,6 +745,9 @@ func (c *APIClient) ParseUserListResponse(userInfoResponse *[]UserResponse) (*[]
 			deviceLimit = c.DeviceLimit
 		} else {
 			deviceLimit = user.DeviceLimit
+			if deviceLimit == 0 && !user.hasModernDeviceLimit {
+				deviceLimit = user.LegacyDeviceLimit
+			}
 		}
 
 		// If there is still device available, add the user
@@ -721,6 +772,12 @@ func (c *APIClient) ParseUserListResponse(userInfoResponse *[]UserResponse) (*[]
 			speedLimit = uint64((c.SpeedLimit * 1000000) / 8)
 		} else {
 			speedLimit = uint64((user.SpeedLimit * 1000000) / 8)
+		}
+		if user.MultiUser != 0 {
+			continue
+		}
+		if user.UUID == "" {
+			user.UUID = uuid.NewMD5(uuid.NameSpaceDNS, []byte(fmt.Sprintf("%d|%s", user.ID, user.Passwd))).String()
 		}
 		userList = append(userList, api.UserInfo{
 			UID:         user.ID,
@@ -773,15 +830,18 @@ func (c *APIClient) ParseSSPanelNodeInfo(nodeInfoResponse *NodeInfoResponse) (*a
 	switch c.NodeType {
 	case "Shadowsocks":
 		transportProtocol = "tcp"
-	case "V2ray":
+	case "V2ray", "Vmess", "Vless":
 		transportProtocol = nodeConfig.Network
+		if transportProtocol == "" {
+			transportProtocol = "tcp"
+		}
 
 		tlsType := nodeConfig.Security
 		if tlsType == "tls" || tlsType == "xtls" {
 			enableTLS = true
 		}
 
-		if nodeConfig.EnableVless == "1" {
+		if nodeConfig.EnableVless == "1" || c.EnableVless || c.NodeType == "Vless" || nodeInfoResponse.Sort == 15 {
 			enableVless = true
 		}
 	case "Trojan":

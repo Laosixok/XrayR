@@ -28,6 +28,46 @@ func (w *Writer) Close() error {
 
 func (w *Writer) WriteMultiBuffer(mb buf.MultiBuffer) error {
 	ctx := context.Background()
-	w.limiter.WaitN(ctx, int(mb.Len()))
+	if err := waitBytes(ctx, w.limiter, int(mb.Len())); err != nil {
+		buf.ReleaseMulti(mb)
+		return err
+	}
 	return w.writer.WriteMultiBuffer(mb)
 }
+
+// Wait in burst-sized chunks: WaitN rejects a whole buffer larger than Burst.
+func waitBytes(ctx context.Context, bucket *rate.Limiter, n int) error {
+	for n > 0 {
+		step := bucket.Burst()
+		if step < 1 {
+			step = 1
+		}
+		if n < step {
+			step = n
+		}
+		if err := bucket.WaitN(ctx, step); err != nil {
+			return err
+		}
+		n -= step
+	}
+	return nil
+}
+
+type Reader struct {
+	reader  buf.Reader
+	limiter *rate.Limiter
+	ctx     context.Context
+}
+
+func (l *Limiter) RateReader(ctx context.Context, reader buf.Reader, bucket *rate.Limiter) buf.Reader {
+	return &Reader{reader: reader, limiter: bucket, ctx: ctx}
+}
+func (r *Reader) ReadMultiBuffer() (buf.MultiBuffer, error) {
+	mb, err := r.reader.ReadMultiBuffer()
+	if waitErr := waitBytes(r.ctx, r.limiter, int(mb.Len())); waitErr != nil {
+		buf.ReleaseMulti(mb)
+		return nil, waitErr
+	}
+	return mb, err
+}
+func (r *Reader) Interrupt() { common.Interrupt(r.reader) }

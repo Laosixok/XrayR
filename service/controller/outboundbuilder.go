@@ -30,6 +30,7 @@ func OutboundBuilder(config *Config, nodeInfo *api.NodeInfo, tag string) (*core.
 	}
 	proxySetting := &conf.FreedomConfig{
 		DomainStrategy: domainStrategy,
+		FinalRules:     config.OutboundFinalRules,
 	}
 	// Used for Shadowsocks-Plugin
 	if nodeInfo.NodeType == "dokodemo-door" {

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package xrayr.app.mydispatcher;
+package sspanel_metron.app.mydispatcher;
 option csharp_namespace = "XrayR.App.Mydispatcher";
 option go_package = "github.com/XrayR-project/XrayR/app/mydispatcher";
 option java_package = "com.xrayr.app.mydispatcher";

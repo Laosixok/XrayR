@@ -13,6 +13,7 @@ with tempfile.TemporaryDirectory(prefix='xrayr-install-test-') as temp:
         z.writestr('XrayR', '#!/bin/sh\necho "XrayR 1.0.0"\n')
         z.writestr('config_sspanel_metron_ws_tls.yml.example', 'template: ws-tls\n')
         z.writestr('config_sspanel_metron_protocols.yml.example', 'template: protocols\n')
+    (root / 'XrayR.sh').write_text((script.parent / 'XrayR.sh').read_text())
     checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
     (root / 'SHA256SUMS').write_text(checksum + '  ' + archive.name + '\n')
     harness = r'''
@@ -34,6 +35,8 @@ install_release
     first = run()
     assert first.returncode == 0, first.stderr
     config = root / 'config/config.yml'
+    assert (root / 'links/xrayr').is_symlink()
+    assert (root / 'links/XrayR').resolve() == (root / 'bin/manager.sh').resolve()
     assert config.exists(), (first.stdout, first.stderr, list(root.rglob("*")))
     assert config.read_text() == 'template: protocols\n'
     config.write_text('existing: keep\n')

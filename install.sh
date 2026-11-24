@@ -11,6 +11,7 @@ version="latest"
 template="default"
 restart_running=1
 work_dir=""
+menu_only=0
 
 fail() { printf '错误：%s\n' "$*" >&2; exit 1; }
 info() { printf '%s\n' "$*"; }
@@ -19,6 +20,7 @@ usage() {
 用法：bash install.sh [--version 1.0.0] [--template default|ws-tls|protocols] [--no-restart]
 默认下载本仓库最新 Release；重复运行用于升级。
 现有配置、证书和 systemd 单元不覆盖。首次安装不自动启动。
+--menu-only 只安装或修复管理菜单，不重新下载主程序。
 --template 只决定首次创建的配置模板；不会替换现有 config.yml。
 --no-restart 升级后不重启已运行的服务。
 HELP
@@ -29,6 +31,7 @@ parse_args() {
         case "$1" in
             --version) [[ $# -ge 2 ]] || fail '--version 缺少版本号'; version="$2"; shift 2 ;;
             --template) [[ $# -ge 2 ]] || fail '--template 缺少模板名'; template="$2"; shift 2 ;;
+            --menu-only) menu_only=1; shift ;;
             --no-restart) restart_running=0; shift ;;
             -h|--help) usage; exit 0 ;;
             *) fail "未知参数：$1" ;;
@@ -81,6 +84,7 @@ install_release() {
     curl -fsSL --retry 3 "$base/$asset" -o "$work_dir/$asset"
     curl -fsSL --retry 3 "$base/SHA256SUMS" -o "$work_dir/SHA256SUMS"
     verify_archive
+    download_manager
     mkdir "$work_dir/unpacked"
     unzip -q "$work_dir/$asset" -d "$work_dir/unpacked"
     [[ -f "$work_dir/unpacked/XrayR" && ! -L "$work_dir/unpacked/XrayR" ]] || fail '发行包缺少常规程序文件'
@@ -104,7 +108,7 @@ install_release() {
     fi
     install -m 0755 "$work_dir/unpacked/XrayR" "$install_dir/XrayR.new"
     mv -f "$install_dir/XrayR.new" "$install_dir/XrayR"
-    ln -sfn "$install_dir/XrayR" "$bin_link"
+    install_manager
     if [[ ! -e "$config_dir/config.yml" ]]; then
         install -m 0600 "$work_dir/unpacked/$candidate" "$config_dir/config.yml"
     fi
@@ -151,5 +155,25 @@ UNIT
     info '查看日志：journalctl -u XrayR.service -f'
 }
 
-main() { parse_args "$@"; require_host; resolve_version; install_release; }
+download_manager() {
+    curl -fsSL --retry 3 "https://raw.githubusercontent.com/$repo/master/XrayR.sh" -o "$work_dir/manager.sh"
+    bash -n "$work_dir/manager.sh" || fail '管理脚本语法检查失败'
+}
+install_manager() {
+    install -d -m 0755 "$install_dir" "$(dirname "$bin_link")"
+    install -m 0755 "$work_dir/manager.sh" "$install_dir/manager.sh.new"
+    mv -f "$install_dir/manager.sh.new" "$install_dir/manager.sh"
+    ln -sfn "$install_dir/manager.sh" "$bin_link"
+    ln -sfn "$install_dir/manager.sh" "$(dirname "$bin_link")/xrayr"
+    info '管理菜单已安装，执行 xrayr 或 XrayR 打开。'
+}
+main() {
+    parse_args "$@"; require_host
+    if [[ "$menu_only" == 1 ]]; then
+        [[ -x "$install_dir/XrayR" ]] || fail '未找到已安装的主程序，请先正常安装'
+        work_dir=$(mktemp -d)
+        trap '[[ -z "$work_dir" ]] || rm -rf -- "$work_dir"' EXIT
+        download_manager; install_manager
+    else resolve_version; install_release; fi
+}
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi

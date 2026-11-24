@@ -67,6 +67,24 @@ sudo journalctl -u XrayR.service -f
 重复运行安装命令即可升级，原来运行的服务会重启；可用 `--no-restart` 暂缓重启。
 脚本只安装 Release 中实际提供的架构，不会给其他架构错误下载 amd64 程序。
 
+### 管理菜单
+
+安装完成后执行 `sudo xrayr` 或 `sudo XrayR` 打开菜单。支持安装、更新、卸载、
+编辑配置、启动/停止/重启、状态、日志、开机自启、版本查询和更新管理脚本。
+主程序独立保存在 `/usr/local/XrayR/XrayR`，systemd 直接调用它。
+
+已安装 1.0.0 但没有菜单的主机，只修复菜单即可：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Laosixok/XrayR/master/install.sh -o install.sh
+sudo bash install.sh --menu-only
+sudo xrayr
+```
+
+常用命令：`xrayr restart`、`xrayr log`、`xrayr update 1.0.0`、`xrayr update-shell`。
+卸载保留配置和证书；重置默认配置前会确认并备份。
+菜单不执行内核升级或清空防火墙规则。
+
 ### Docker 安装
 
 使用仓库中的 Dockerfile 和 Compose 在本地构建，无需依赖预发布镜像。

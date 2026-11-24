@@ -28,76 +28,69 @@ A Xray backend framework that can easily support many panels.
 
 本仓库是个人维护的 XrayR 分支，当前版本为 1.0.0，用于学习与自用。项目继承原 XrayR，并固定复用 XrayRP 的 AnyTLS、Hysteria2 运行时；不代表原项目或相关依赖的官方发行。软件按原有许可证及依赖许可证提供，不承诺可用性或适用性。来源及许可证说明见 [NOTICE.md](NOTICE.md) 与 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-## 特点
+## 功能与协议
 
-* 永久开源且免费。
-* 支持V2ray，Trojan， Shadowsocks多种协议。
-* 支持Vless和XTLS等新特性。
-* 支持单实例对接多面板、多节点，无需重复启动。
-* 支持限制在线IP
-* 支持节点端口级别、用户级别限速。
-* 配置简单明了。
-* 修改配置自动重启实例。
-* 方便编译和升级，可以快速更新核心版本， 支持Xray-core新特性。
+| 协议 | SSPanel-Metron 对接 | 说明 |
+|---|---|---|
+| VMess / VLESS | 支持 | VLESS 可同时提供 WS 80 与 WSS 443 入口 |
+| Trojan | 支持 | 配置 TLS 证书 |
+| Shadowsocks | 支持 | 兼容旧式承载账号与用户配置 |
+| AnyTLS | 支持 | sort=18，UUID 认证，可下发 padding_scheme |
+| Hysteria2 | 支持 | sort=17，使用 UDP，可配置 salamander 混淆 |
 
-## 功能介绍
+支持用户同步、流量上报、在线 IP 限制、用户限速、审计规则和证书配置。
+同一 VLESS 节点的 WS/WSS 双入口共用用户及流量统计。
+面板接口保持兼容，原 XrayR 0.9.0 后端无需一起升级。
+其他面板保留原有适配能力；新协议目前以 SSPanel-Metron 对接为准。
 
-| 功能        | v2ray | trojan | shadowsocks |
-|-----------|-------|--------|-------------|
-| 获取节点信息    | √     | √      | √           |
-| 获取用户信息    | √     | √      | √           |
-| 用户流量统计    | √     | √      | √           |
-| 服务器信息上报   | √     | √      | √           |
-| 自动申请tls证书 | √     | √      | √           |
-| 自动续签tls证书 | √     | √      | √           |
-| 在线人数统计    | √     | √      | √           |
-| 在线用户限制    | √     | √      | √           |
-| 审计规则      | √     | √      | √           |
-| 节点端口限速    | √     | √      | √           |
-| 按照用户限速    | √     | √      | √           |
-| 自定义DNS    | √     | √      | √           |
+## 安装
 
-## 支持前端
+### 一键安装或升级（Linux amd64 / systemd）
 
-| 前端                                                     | v2ray | trojan | shadowsocks             |
-|--------------------------------------------------------|-------|--------|-------------------------|
-| sspanel-uim                                            | √     | √      | √ (单端口多用户和V2ray-Plugin) |
-| v2board                                                | √     | √      | √                       |
-| [PMPanel](https://github.com/ByteInternetHK/PMPanel)   | √     | √      | √                       |
-| [ProxyPanel](https://github.com/ProxyPanel/ProxyPanel) | √     | √      | √                       |
-| [WHMCS (V2RaySocks)](https://v2raysocks.doxtex.com/)   | √     | √      | √                       |
-| [GoV2Panel](https://github.com/pingProMax/gov2panel)   | √     | √      | √                       |
-| [BunPanel](https://github.com/pennyMorant/bunpanel-release)   | √     | √      | √                       |
+先安装 `curl`、`unzip`、`ca-certificates` 和 `coreutils`，再运行：
 
-## 软件安装
-
-### 一键安装
-
-```
-wget -N https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh && bash install.sh
+```bash
+curl -fsSL https://raw.githubusercontent.com/Laosixok/XrayR/master/install.sh -o install.sh
+sudo bash install.sh --version 1.0.0
 ```
 
-### 使用Docker部署软件
+省略 `--version` 时安装本仓库最新 Release。首次安装默认使用 VLESS WS/WSS 模板；
+AnyTLS / Hysteria2 可添加 `--template protocols`。脚本校验 SHA256，不覆盖现有配置、
+证书或 systemd 单元；首次安装不会自动启动。编辑 `/etc/XrayR/config.yml`，
+填写面板信息并放置证书后执行：
 
-[Docker部署教程](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/docker)
+```bash
+sudo systemctl enable --now XrayR.service
+sudo journalctl -u XrayR.service -f
+```
 
-### 手动安装
-手动安装
-下载并使用
-在此处，根据自身系统选择合适的版本：Release
-解压压缩包，之后运行：./XrayR --config config.yml
-编译并使用
-大于 go 1.19
-依次运行
+重复运行安装命令即可升级，原来运行的服务会重启；可用 `--no-restart` 暂缓重启。
+脚本只安装 Release 中实际提供的架构，不会给其他架构错误下载 amd64 程序。
 
-git clone https://github.com/XrayR-project/XrayR
-cd XrayR/main
-go mod tidy
-go build -o XrayR -ldflags "-s -w"
+### Docker 安装
+
+使用仓库中的 Dockerfile 和 Compose 在本地构建，无需依赖预发布镜像。
+完整步骤、配置挂载、证书和 UDP 设置见 [Docker 安装教程](docs/docker.md)。
+
+### 手动安装或编译
+
+从 [Release](https://github.com/Laosixok/XrayR/releases) 下载程序与 SHA256SUMS，
+校验后解压并编辑配置文件：
+
+```bash
+sha256sum -c SHA256SUMS
+unzip XrayR-linux-amd64.zip
 ./XrayR --config config.yml
-配置文件详见：配置文件说明
+```
 
-[手动安装教程](https://xrayr-project.github.io/XrayR-doc/xrayr-xia-zai-he-an-zhuang/install/manual)
+源码编译需要 Go 1.27.4 或更新版本：
+
+```bash
+git clone https://github.com/Laosixok/XrayR.git
+cd XrayR
+go build -trimpath -ldflags "-s -w" -o XrayR .
+./XrayR --config /etc/XrayR/config.yml
+```
 
 ## 配置文件及详细使用教程
 

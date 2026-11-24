@@ -1,17 +1,15 @@
-# Build go
 FROM golang:1.27.4-alpine AS builder
 WORKDIR /app
-COPY . .
-ENV CGO_ENABLED=0
+COPY go.mod go.sum ./
 RUN go mod download
-RUN go build -v -o XrayR -trimpath -ldflags "-s -w -buildid="
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -buildid=" -o /out/XrayR .
 
-# Release
-FROM  alpine
-# 安装必要的工具包
-RUN  apk --update --no-cache add tzdata ca-certificates \
-    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-RUN mkdir /etc/XrayR/
-COPY --from=builder /app/XrayR /usr/local/bin
-
-ENTRYPOINT [ "XrayR", "--config", "/etc/XrayR/config.yml"]
+FROM alpine:3.22
+RUN apk add --no-cache tzdata ca-certificates \
+    && mkdir -p /etc/XrayR /usr/share/licenses/XrayR
+WORKDIR /etc/XrayR
+ENV TZ=Asia/Shanghai
+COPY --from=builder /out/XrayR /usr/local/bin/XrayR
+COPY --from=builder /app/LICENSE /app/NOTICE.md /app/THIRD_PARTY_NOTICES.md /usr/share/licenses/XrayR/
+ENTRYPOINT ["XrayR", "--config", "/etc/XrayR/config.yml"]

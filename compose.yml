@@ -1,0 +1,19 @@
+services:
+  xrayr:
+    build:
+      context: .
+    image: xrayr-local:1.0.0
+    restart: unless-stopped
+    network_mode: host
+    working_dir: /etc/XrayR
+    volumes:
+      - type: bind
+        source: ${XRAYR_CONFIG_DIR:-/opt/xrayr/config}
+        target: /etc/XrayR
+        bind:
+          create_host_path: false
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

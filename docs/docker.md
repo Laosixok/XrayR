@@ -10,14 +10,14 @@
 git clone https://github.com/Laosixok/XrayR.git
 cd XrayR
 sudo install -d -m 0700 /opt/xrayr/config
-sudo cp release/config/config_sspanel_metron_ws_tls.yml.example /opt/xrayr/config/config.yml
+sudo cp release/config/config_sspanel_metron_default.yml.example /opt/xrayr/config/config.yml
 sudo cp release/config/{dns.json,route.json,custom_inbound.json,custom_outbound.json,rulelist,geoip.dat,geosite.dat} /opt/xrayr/config/
 sudo chmod 0600 /opt/xrayr/config/*
 ```
 
 AnyTLS / Hysteria2 改用 `config_sspanel_metron_protocols.yml.example` 作为 config.yml。
 模板只是示例，启动前填写自己的面板地址、密钥和实际节点 ID。
-WS/WSS 示例端口为 80/443，实际监听端口仍由面板和配置决定。
+默认模板包含 Shadowsocks 和 VLESS 两个节点，VLESS 第二 TLS 入口为 8443；主入口端口、WS 路径由面板下发。只需 VLESS 时可改用 config_sspanel_metron_ws_tls.yml.example。
 
 配置存放在源码目录之外，不提交到 Git，也不写进镜像。`.dockerignore` 限定了构建上下文，
 不包含 Git 历史、本地配置或证书文件。

@@ -8,7 +8,7 @@ config_dir="/etc/XrayR"
 unit_dir="/etc/systemd/system"
 bin_link="/usr/local/bin/XrayR"
 version="latest"
-template="ws-tls"
+template="default"
 restart_running=1
 work_dir=""
 
@@ -16,7 +16,7 @@ fail() { printf '错误：%s\n' "$*" >&2; exit 1; }
 info() { printf '%s\n' "$*"; }
 usage() {
     cat <<'HELP'
-用法：bash install.sh [--version 1.0.0] [--template ws-tls|protocols] [--no-restart]
+用法：bash install.sh [--version 1.0.0] [--template default|ws-tls|protocols] [--no-restart]
 默认下载本仓库最新 Release；重复运行用于升级。
 现有配置、证书和 systemd 单元不覆盖。首次安装不自动启动。
 --template 只决定首次创建的配置模板；不会替换现有 config.yml。
@@ -35,7 +35,7 @@ parse_args() {
         esac
     done
     [[ "$version" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || fail '版本号格式无效'
-    case "$template" in ws-tls|protocols) ;; *) fail '模板仅支持 ws-tls 或 protocols' ;; esac
+    case "$template" in default|ws-tls|protocols) ;; *) fail '模板仅支持 default、ws-tls 或 protocols' ;; esac
 }
 
 require_host() {
@@ -87,10 +87,14 @@ install_release() {
     chmod 0755 "$work_dir/unpacked/XrayR"
     "$work_dir/unpacked/XrayR" version || fail '新程序无法运行，未修改现有安装'
     case "$template" in
+        default) candidate="config_sspanel_metron_default.yml.example" ;;
         ws-tls) candidate="config_sspanel_metron_ws_tls.yml.example" ;;
         protocols) candidate="config_sspanel_metron_protocols.yml.example" ;;
     esac
-    [[ -f "$work_dir/unpacked/$candidate" ]] || fail '发行包缺少所选配置模板'
+    if [[ "$template" == default && ! -f "$work_dir/unpacked/$candidate" && ! -e "$config_dir/config.yml" ]]; then
+        curl -fsSL --retry 3 "https://raw.githubusercontent.com/$repo/master/release/config/$candidate" -o "$work_dir/unpacked/$candidate"
+    fi
+    [[ -e "$config_dir/config.yml" || -f "$work_dir/unpacked/$candidate" ]] || fail '发行包缺少所选配置模板'
     if systemctl is-active --quiet XrayR.service; then was_running=1; fi
     install -d -m 0755 "$install_dir" "$unit_dir" "$(dirname "$bin_link")"
     install -d -m 0700 "$config_dir"

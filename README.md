@@ -54,8 +54,8 @@ curl -fsSL https://raw.githubusercontent.com/Laosixok/XrayR/master/install.sh -o
 sudo bash install.sh --version 1.0.0
 ```
 
-省略 `--version` 时安装本仓库最新 Release。首次安装默认使用 VLESS WS/WSS 模板；
-AnyTLS / Hysteria2 可添加 `--template protocols`。脚本校验 SHA256，不覆盖现有配置、
+省略 `--version` 时安装本仓库最新 Release。首次安装默认使用 Shadowsocks + VLESS WS/WSS 双节点模板（TLS 第二入口为 8443）；
+只安装 VLESS 可添加 `--template ws-tls`；AnyTLS / Hysteria2 可添加 `--template protocols`。旧发行包缺少新版默认模板时，脚本会从本仓库下载公共默认模板。脚本校验程序包 SHA256，不覆盖现有配置、
 证书或 systemd 单元；首次安装不会自动启动。编辑 `/etc/XrayR/config.yml`，
 填写面板信息并放置证书后执行：
 

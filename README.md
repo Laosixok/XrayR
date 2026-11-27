@@ -66,7 +66,7 @@ sudo journalctl -u XrayR.service -f
 重复运行安装命令即可升级，原来运行的服务会重启；可用 `--no-restart` 暂缓重启。
 脚本只安装 Release 中实际提供的架构，不会给其他架构错误下载 amd64 程序。
 
-### 从 fwcloud 脚本安装的 0.9.0 升级
+### 从 xrayr 脚本安装的 0.9.0 升级
 
 直接执行上面的一行命令即可原地升级，无需卸载。程序继续使用
 `/usr/local/XrayR/XrayR` 和 `/etc/XrayR/config.yml`，保留配置、证书、路由和开机自启状态。

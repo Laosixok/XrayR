@@ -47,16 +47,15 @@ A Xray backend framework that can easily support many panels.
 
 ### 一键安装或升级（Linux amd64 / systemd）
 
-先安装 `curl`、`unzip`、`ca-certificates` 和 `coreutils`，再运行：
+先安装 `curl`、`unzip`、`ca-certificates` 和 `coreutils`，使用 root 执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Laosixok/XrayR/master/install.sh -o install.sh
-sudo bash install.sh --version 1.0.0
+bash <(curl -fsSL https://raw.githubusercontent.com/Laosixok/XrayR/master/install.sh) --version 1.0.0
 ```
 
 省略 `--version` 时安装本仓库最新 Release。首次安装默认使用 Shadowsocks + VLESS WS/WSS 双节点模板（TLS 第二入口为 8443）；
 只安装 VLESS 可添加 `--template ws-tls`；AnyTLS / Hysteria2 可添加 `--template protocols`。旧发行包缺少新版默认模板时，脚本会从本仓库下载公共默认模板。脚本校验程序包 SHA256，不覆盖现有配置、
-证书或 systemd 单元；首次安装不会自动启动。编辑 `/etc/XrayR/config.yml`，
+证书；旧版服务仅兼容启动参数，其他服务设置保留。首次安装不会自动启动。编辑 `/etc/XrayR/config.yml`，
 填写面板信息并放置证书后执行：
 
 ```bash
@@ -66,6 +65,18 @@ sudo journalctl -u XrayR.service -f
 
 重复运行安装命令即可升级，原来运行的服务会重启；可用 `--no-restart` 暂缓重启。
 脚本只安装 Release 中实际提供的架构，不会给其他架构错误下载 amd64 程序。
+
+### 从 fwcloud 脚本安装的 0.9.0 升级
+
+直接执行上面的一行命令即可原地升级，无需卸载。程序继续使用
+`/usr/local/XrayR/XrayR` 和 `/etc/XrayR/config.yml`，保留配置、证书、路由和开机自启状态。
+脚本会在 `/usr/local/XrayR/upgrade-backup.*` 创建仅 root 可访问的本地备份，
+兼容旧服务的 `-config` 参数，并更新旧 `/usr/bin/XrayR`、`/usr/bin/xrayr` 管理入口。
+运行中的服务会重启并检查 10 秒；重启失败或检查期间退出时，会尝试恢复旧程序和被修改的服务文件。
+检查通过代表进程持续运行，仍需测试节点连接和面板上报。
+原先停止的服务保持停止；`--no-restart` 可只替换程序、稍后手动重启。
+升级存在短暂重连，不是无中断热更新。已有配置不会自动加入新协议或 WSS 第二入口。
+备份包含私有配置与证书，请只保留在服务器本地，不要上传。
 
 ### 管理菜单
 

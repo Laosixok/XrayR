@@ -7,6 +7,8 @@ install_dir="/usr/local/XrayR"
 config_dir="/etc/XrayR"
 unit_dir="/etc/systemd/system"
 bin_link="/usr/local/bin/XrayR"
+legacy_bin_dir="/usr/bin"
+backup_dir=""
 version="latest"
 template="default"
 restart_running=1
@@ -19,7 +21,7 @@ usage() {
     cat <<'HELP'
 用法：bash install.sh [--version 1.0.0] [--template default|ws-tls|protocols] [--no-restart]
 默认下载本仓库最新 Release；重复运行用于升级。
-现有配置、证书和 systemd 单元不覆盖。首次安装不自动启动。
+现有配置、证书保留；旧服务的 -config 参数自动兼容为 --config。首次安装不自动启动。
 --menu-only 只安装或修复管理菜单，不重新下载主程序。
 --template 只决定首次创建的配置模板；不会替换现有 config.yml。
 --no-restart 升级后不重启已运行的服务。
@@ -49,7 +51,7 @@ require_host() {
         *) fail '当前发行版仅提供 Linux amd64 程序；其他架构请从源码构建' ;;
     esac
     local cmd
-    for cmd in curl unzip sha256sum awk install mktemp systemctl; do
+    for cmd in curl unzip sha256sum awk install mktemp systemctl sed cp; do
         command -v "$cmd" >/dev/null 2>&1 || fail "缺少 $cmd，请先安装 curl、unzip、ca-certificates、coreutils 和 systemd"
     done
     systemctl --version >/dev/null || fail 'systemd 不可用；容器请使用 Docker 部署方式'
@@ -103,12 +105,17 @@ install_release() {
     install -d -m 0755 "$install_dir" "$unit_dir" "$(dirname "$bin_link")"
     install -d -m 0700 "$config_dir"
     if [[ -f "$install_dir/XrayR" ]]; then
+        backup_dir=$(mktemp -d "$install_dir/upgrade-backup.XXXXXXXX")
+        chmod 0700 "$backup_dir"
+        cp -a "$install_dir/XrayR" "$backup_dir/XrayR"
+        [[ ! -d "$config_dir" ]] || cp -a "$config_dir" "$backup_dir/config"
+        [[ ! -f "$unit_dir/XrayR.service" ]] || cp -a "$unit_dir/XrayR.service" "$backup_dir/XrayR.service"
+        info "升级备份（含配置和证书，仅保存在本机）：$backup_dir"
         had_binary=1
         install -m 0755 "$install_dir/XrayR" "$install_dir/XrayR.previous"
     fi
     install -m 0755 "$work_dir/unpacked/XrayR" "$install_dir/XrayR.new"
     mv -f "$install_dir/XrayR.new" "$install_dir/XrayR"
-    install_manager
     if [[ ! -e "$config_dir/config.yml" ]]; then
         install -m 0600 "$work_dir/unpacked/$candidate" "$config_dir/config.yml"
     fi
@@ -139,20 +146,41 @@ LimitNOFILE=1048576
 WantedBy=multi-user.target
 UNIT
     fi
+    # Legacy fwcloud units use -config; Cobra expects --config in 1.0.0.
+    if [[ -f "$unit_dir/XrayR.service" ]] && sed -n '/^ExecStart=.* -config[ =]/p' "$unit_dir/XrayR.service" | read -r _; then
+        cp -p "$unit_dir/XrayR.service" "$work_dir/XrayR.service.original"
+        sed '/^ExecStart=/s/ -config\([ =]\)/ --config\1/g' "$unit_dir/XrayR.service" > "$work_dir/XrayR.service"
+        cat "$work_dir/XrayR.service" > "$unit_dir/XrayR.service"
+        info '已兼容旧服务启动参数：-config → --config。'
+    fi
     systemctl daemon-reload
     if [[ "$was_running" == 1 && "$restart_running" == 1 ]]; then
-        if ! systemctl restart XrayR.service; then
+        if ! systemctl restart XrayR.service || ! wait_service; then
             if [[ "$had_binary" == 1 ]]; then
                 mv -f "$install_dir/XrayR.previous" "$install_dir/XrayR"
+                if [[ -f "$work_dir/XrayR.service.original" ]]; then
+                    cat "$work_dir/XrayR.service.original" > "$unit_dir/XrayR.service"
+                    systemctl daemon-reload
+                fi
                 systemctl restart XrayR.service || true
             fi
             fail '新版本重启失败，已尝试恢复旧程序；请检查 journalctl -u XrayR'
         fi
     fi
+    install_manager
     info "XrayR $version 安装完成；现有配置和证书保持不变。"
     info "首次安装请编辑 $config_dir/config.yml，填写面板信息和证书，再运行："
     info 'systemctl enable --now XrayR.service'
     info '查看日志：journalctl -u XrayR.service -f'
+}
+
+wait_service() {
+    # systemctl restart can succeed before a Type=simple process exits.
+    local check
+    for check in 1 2 3 4 5; do
+        sleep 2
+        systemctl is-active --quiet XrayR.service || return 1
+    done
 }
 
 download_manager() {
@@ -165,6 +193,16 @@ install_manager() {
     mv -f "$install_dir/manager.sh.new" "$install_dir/manager.sh"
     ln -sfn "$install_dir/manager.sh" "$bin_link"
     ln -sfn "$install_dir/manager.sh" "$(dirname "$bin_link")/xrayr"
+    # Replace the fwcloud manager too, including shells caching /usr/bin/xrayr.
+    local name path
+    for name in XrayR xrayr; do
+        path="$legacy_bin_dir/$name"
+        if [[ -L "$path" && ( "$(readlink "$path")" == "$legacy_bin_dir/XrayR" || "$(readlink "$path")" == "$install_dir/manager.sh" ) ]] ||
+           { [[ -f "$path" ]] && grep -q 'XrayR' "$path"; }; then
+            if [[ -n "$backup_dir" ]]; then cp -a "$path" "$backup_dir/legacy-$name"; fi
+            ln -sfn "$install_dir/manager.sh" "$path"
+        fi
+    done
     info '管理菜单已安装，执行 xrayr 或 XrayR 打开。'
 }
 main() {
